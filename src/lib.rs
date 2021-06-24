@@ -44,7 +44,7 @@ impl<'a> MmapFile<'a> {
             Map::map(len as usize)
                 .anywhere()
                 .from(&mut file, offset)
-                .known::<perms::ReadWrite>(Kind::Private)
+                .known::<perms::ReadWrite>(Kind::Shared)
                 .unwrap(),
         );
 
