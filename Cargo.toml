@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mmarinus = { git = "https://github.com/kaspar030/mmarinus" }
+mmarinus = { git = "https://github.com/kaspar030/mmarinus", branch = "make_embeddable" }
 
 [dev-dependencies]
 temp_testdir = "0.2"
