@@ -1,0 +1,14 @@
+[package]
+name = "mmapfile"
+version = "0.1.0"
+authors = ["Kaspar Schleiser <kaspar@schleiser.de>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#mmarinus = "0.2.0"
+mmarinus = { path = "/home/kaspar/src/mmarinus" }
+
+[dev-dependencies]
+temp_testdir = "0.2"
