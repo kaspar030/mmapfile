@@ -1,12 +1,17 @@
 #![feature(with_options)]
 
+use bytemuck::cast_slice;
+use bytemuck::cast_slice_mut;
+use mmarinus::Known;
 use std::fs::File;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::os::unix::prelude::*;
 use std::path::Path;
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
+use bytemuck::Pod;
 use mmarinus::{perms, sealed::Type, Kind, Map};
 
 pub trait Mmap<'a> {
@@ -29,12 +34,13 @@ impl<'a, T: Type> Mmap<'a> for Map<T> {
     }
 }
 
-pub struct MmapFile<'a> {
+pub struct MmapFile<'a, T: Pod> {
     map: Box<dyn Mmap<'a>>,
+    _type: PhantomData<T>,
 }
 
-impl<'a> MmapFile<'a> {
-    pub fn map(mut file: File, offset: i64) -> Self {
+impl<'a, T: Pod> MmapFile<'a, T> {
+    pub fn map<U: Known + 'static>(mut file: File, offset: i64) -> Self {
         let len = file.metadata().unwrap().len();
         if len > usize::max_value() as u64 {
             panic!("file too large");
@@ -44,48 +50,62 @@ impl<'a> MmapFile<'a> {
             Map::map(len as usize)
                 .anywhere()
                 .from(&mut file, offset)
-                .known::<perms::ReadWrite>(Kind::Shared)
+                .known::<U>(Kind::Shared)
                 .unwrap(),
         );
 
-        MmapFile { map }
+        MmapFile {
+            map,
+            _type: PhantomData,
+        }
+    }
+
+    pub fn open<P: AsRef<Path>>(
+        filename: P,
+        offset: i64,
+    ) -> Result<MmapFile<'a, T>, std::io::Error> {
+        let file = File::with_options().read(true).write(true).open(filename)?;
+
+        Ok(MmapFile::map::<perms::ReadWrite>(file, offset))
     }
 
     pub fn with_capacity<P: AsRef<Path>>(
         filename: P,
         capacity: usize,
-    ) -> Result<MmapFile<'a>, std::io::Error> {
+    ) -> Result<MmapFile<'a, T>, std::io::Error> {
         let file = File::with_options()
             .read(true)
             .write(true)
             .create_new(true)
             .open(filename)?;
 
-        file.set_len(capacity as u64)?;
+        file.set_len((capacity * core::mem::size_of::<T>()) as u64)?;
 
-        Ok(MmapFile::map(file, 0))
+        Ok(MmapFile::map::<perms::ReadWrite>(file, 0))
     }
 
     pub fn size(&self) -> usize {
         self.map.size()
     }
-    pub fn as_slice(&self) -> &'a [u8] {
-        self.map.as_slice()
+
+    pub fn as_slice(&self) -> &'a [T] {
+        cast_slice::<u8, T>(self.map.as_slice())
     }
-    pub fn as_slice_mut(&mut self) -> &'a mut [u8] {
-        self.map.as_slice_mut()
+
+    pub fn as_slice_mut(&mut self) -> &'a mut [T] {
+        cast_slice_mut::<u8, T>(self.map.as_slice_mut())
     }
 }
 
-impl<'a> Deref for MmapFile<'a> {
-    type Target = [u8];
+impl<'a, T: Pod> Deref for MmapFile<'a, T> {
+    type Target = [T];
 
     fn deref(&self) -> &Self::Target {
         self.as_slice()
     }
 }
 
-impl<'a> DerefMut for MmapFile<'a> {
+impl<'a, T: Pod> DerefMut for MmapFile<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_slice_mut()
     }
@@ -103,19 +123,8 @@ mod tests {
         let temp = TempDir::default();
         let mut file_path = PathBuf::from(temp.as_ref());
         file_path.push("test_basic");
-        println!("{:?}", file_path);
-        let f = OpenOptions::new()
-            .write(true)
-            .read(true)
-            .create(true)
-            .open(file_path.clone())
-            .unwrap();
 
-        f.set_len(4096).unwrap();
-        println!("file: {:?}", f);
-
-        let mut fa = MmapFile::map(f, 0);
-        let slice = &mut *fa;
+        let slice: &[u8] = &mut *MmapFile::with_capacity(file_path, 4096).unwrap();
         assert_eq!(slice, &[0u8; 4096]);
     }
 
@@ -124,17 +133,8 @@ mod tests {
         let temp = TempDir::default();
         let mut file_path = PathBuf::from(temp.as_ref());
         file_path.push("test_basic");
-        println!("{:?}", file_path);
-        let f = OpenOptions::new()
-            .write(true)
-            .read(true)
-            .create(true)
-            .open(file_path.clone())
-            .unwrap();
-        f.set_len(4096).unwrap();
-        println!("file: {:?}", f);
 
-        let mut fa = MmapFile::map(f, 0);
+        let mut fa = MmapFile::with_capacity(file_path, 4096).unwrap();
         let slice = &mut *fa;
         assert_eq!(slice, &[0u8; 4096]);
         for i in 0..slice.len() {
