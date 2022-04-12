@@ -1,6 +1,4 @@
-#![feature(with_options)]
-
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -139,7 +137,7 @@ impl<'a, T: Pod> MmapFile<'a, T> {
     }
 
     pub fn open<P: AsRef<Path>>(filename: P) -> Result<MmapFile<'a, T>, std::io::Error> {
-        let file = File::with_options().read(true).write(true).open(filename)?;
+        let file = OpenOptions::new().read(true).write(true).open(filename)?;
         let hdr = MmapFileHdr::deserialize_from(&file).unwrap();
         if hdr.typename != std::any::type_name::<T>() {
             panic!("type mismatch");
@@ -158,7 +156,7 @@ impl<'a, T: Pod> MmapFile<'a, T> {
         filename: P,
         capacity: usize,
     ) -> Result<MmapFile<'a, T>, std::io::Error> {
-        let file = File::with_options()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create_new(true)
